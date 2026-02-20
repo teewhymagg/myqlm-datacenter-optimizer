@@ -1,0 +1,6 @@
+# Data Center Fat-Tree Optimization with myQLM
+# =============================================
+# Core dependencies
+
+myqlm>=1.12.0
+numpy>=1.24.0
