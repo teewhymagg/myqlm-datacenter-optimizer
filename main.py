@@ -74,16 +74,22 @@ def parse_args():
         help="Budget cost penalty weight (default: 5.0)"
     )
     parser.add_argument(
-        "--reward-node", type=float, default=5.0,
-        help="Reward weight per node (default: 5.0)"
+        "--reward-node",
+        type=float,
+        default=25.0,
+        help="Reward for placing a compute node (default: 25.0)",
     )
     parser.add_argument(
-        "--switch-incentive", type=float, default=0.3,
-        help="Switch reward as fraction of node reward (default: 0.3)"
+        "--switch-incentive",
+        type=float,
+        default=0.8,
+        help="Factor < 1.0. Switch reward = factor * node_reward (default: 0.8)",
     )
     parser.add_argument(
-        "--penalty-port", type=float, default=2.0,
-        help="Port capacity penalty weight (default: 2.0)"
+        "--penalty-port",
+        type=float,
+        default=2.0,
+        help="Weight for L1 down-port capacity constraints (default: 2.0)",
     )
     parser.add_argument(
         "--reward-locality", type=float, default=0.5,

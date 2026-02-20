@@ -136,13 +136,15 @@ class QUBOBuilder:
         n_s = self.model.slots_per_rack
         
         # We process this as a simpler ratio penalty:
-        # A_port * (N - 2 * L1)^2 + A_port * (L1 - L2)^2
-        # This forces the solver to keep components mathematically balanced.
+        # A_port * (N - 2 * L1)^2 + (A_port / 2) * (L1 - L2)^2
+        # This keeps L1/L2 balanced without mathematically overwhelming the node rewards.
         
-        # 1. Node vs L1 balance (N - 2*L1)**2
         nodes = [(r, s) for r in range(n_r) for s in range(n_s)]
         l1s = [(r, s) for r in range(n_r) for s in range(n_s)]
         l2s = [(r, s) for r in range(n_r) for s in range(n_s)]
+        
+        # (A_port / 2) for the second term to soften the L2 penalty landscape
+        A_l2 = self.A_port * 0.5 
 
         for r1, s1 in nodes:
             idx_n1 = self._node_idx(r1, s1)
@@ -154,27 +156,27 @@ class QUBOBuilder:
         for r1, s1 in l1s:
             idx_l1 = self._l1_idx(r1, s1)
             # 4 * L1**2 from the Node balance, plus 1 * L1**2 from the L2 balance
-            self._add_diagonal(idx_l1, 5 * self.A_port) 
+            self._add_diagonal(idx_l1, 4 * self.A_port + A_l2) 
             for r2, s2 in l1s:
                 if (r1, s1) != (r2, s2):
-                    self._add_interaction(idx_l1, self._l1_idx(r2, s2), 10 * self.A_port)
+                    self._add_interaction(idx_l1, self._l1_idx(r2, s2), 8 * self.A_port + 2 * A_l2)
                     
         for r, s in l2s:
             idx_l2 = self._l2_idx(r, s)
-            self._add_diagonal(idx_l2, self.A_port)
+            self._add_diagonal(idx_l2, A_l2)
             for r2, s2 in l2s:
                 if (r, s) != (r2, s2):
-                    self._add_interaction(idx_l2, self._l2_idx(r2, s2), 2 * self.A_port)
+                    self._add_interaction(idx_l2, self._l2_idx(r2, s2), 2 * A_l2)
                     
-        # Cross items: -4 * N * L1
+        # Cross items: -4 * N * L1 (from first term)
         for rn, sn in nodes:
             for rl, sl in l1s:
                 self._add_interaction(self._node_idx(rn, sn), self._l1_idx(rl, sl), -4 * self.A_port)
                 
-        # Cross items: -2 * L1 * L2
+        # Cross items: -2 * L1 * L2 (from second term)
         for rl, sl in l1s:
             for r2, s2 in l2s:
-                self._add_interaction(self._l1_idx(rl, sl), self._l2_idx(r2, s2), -2 * self.A_port)
+                self._add_interaction(self._l1_idx(rl, sl), self._l2_idx(r2, s2), -2 * A_l2)
 
     def _build_locality(self):
         """
