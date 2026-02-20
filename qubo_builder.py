@@ -128,37 +128,53 @@ class QUBOBuilder:
 
     def _build_port_capacity(self):
         """
-        Enforce port capacity: (N - 2 * L1)^2
-        1 L1 switch = 32 downlinks. 1 Node = 16 links. So 1 L1 = 2 Nodes.
-        Expanding: N^2 - 4 N L1 + 4 L1^2
+        Penalty enforcing the 1:1 non-blocking port logic mathematically.
+        1. 16 * Nodes <= 32 * L1_Switches -> Nodes <= 2 * L1
+        2. L1_Switches <= L2_Switches (Non-blocking spine scale)
         """
         n_r = self.model.num_rack_positions
         n_s = self.model.slots_per_rack
-        all_n = [self._node_idx(r, s) for r in range(n_r) for s in range(n_s)]
-        all_l1 = [self._l1_idx(r, s) for r in range(n_r) for s in range(n_s)]
+        
+        # We process this as a simpler ratio penalty:
+        # A_port * (N - 2 * L1)^2 + A_port * (L1 - L2)^2
+        # This forces the solver to keep components mathematically balanced.
+        
+        # 1. Node vs L1 balance (N - 2*L1)**2
+        nodes = [(r, s) for r in range(n_r) for s in range(n_s)]
+        l1s = [(r, s) for r in range(n_r) for s in range(n_s)]
+        l2s = [(r, s) for r in range(n_r) for s in range(n_s)]
 
-        # N^2 = sum_i(N_i) + 2 * sum_{i<j}(N_i N_j)
-        len_n = len(all_n)
-        for i in range(len_n):
-            idx1 = all_n[i]
-            self._add_diagonal(idx1, self.A_port * 1.0)
-            for j in range(i + 1, len_n):
-                idx2 = all_n[j]
-                self._add_interaction(idx1, idx2, 2.0 * self.A_port)
-
-        # 4 L1^2 = 4*sum_i(L1_i) + 8 * sum_{i<j}(L1_i L1_j)
-        len_l1 = len(all_l1)
-        for i in range(len_l1):
-            idx1 = all_l1[i]
-            self._add_diagonal(idx1, self.A_port * 4.0)
-            for j in range(i + 1, len_l1):
-                idx2 = all_l1[j]
-                self._add_interaction(idx1, idx2, 8.0 * self.A_port)
-
-        # -4 N L1 = -4 * N_i * L1_j
-        for idx_n in all_n:
-            for idx_l1 in all_l1:
-                self._add_interaction(idx_n, idx_l1, -4.0 * self.A_port)
+        for r1, s1 in nodes:
+            idx_n1 = self._node_idx(r1, s1)
+            self._add_diagonal(idx_n1, self.A_port)
+            for r2, s2 in nodes:
+                if (r1, s1) != (r2, s2):
+                    self._add_interaction(idx_n1, self._node_idx(r2, s2), 2 * self.A_port)
+                    
+        for r1, s1 in l1s:
+            idx_l1 = self._l1_idx(r1, s1)
+            # 4 * L1**2 from the Node balance, plus 1 * L1**2 from the L2 balance
+            self._add_diagonal(idx_l1, 5 * self.A_port) 
+            for r2, s2 in l1s:
+                if (r1, s1) != (r2, s2):
+                    self._add_interaction(idx_l1, self._l1_idx(r2, s2), 10 * self.A_port)
+                    
+        for r, s in l2s:
+            idx_l2 = self._l2_idx(r, s)
+            self._add_diagonal(idx_l2, self.A_port)
+            for r2, s2 in l2s:
+                if (r, s) != (r2, s2):
+                    self._add_interaction(idx_l2, self._l2_idx(r2, s2), 2 * self.A_port)
+                    
+        # Cross items: -4 * N * L1
+        for rn, sn in nodes:
+            for rl, sl in l1s:
+                self._add_interaction(self._node_idx(rn, sn), self._l1_idx(rl, sl), -4 * self.A_port)
+                
+        # Cross items: -2 * L1 * L2
+        for rl, sl in l1s:
+            for r2, s2 in l2s:
+                self._add_interaction(self._l1_idx(rl, sl), self._l2_idx(r2, s2), -2 * self.A_port)
 
     def _build_locality(self):
         """
@@ -359,13 +375,14 @@ class QUBOBuilder:
 
         # Step 4: Budget feasibility — greedily remove components if over
         links_per_node = self.model.fat_tree.links_per_node
-        links_to_l2 = self.model.fat_tree.links_per_l1_to_l2
         
         def compute_cost(xs):
             total_racks = sum(1 for r in range(n_r) if xs[self._rack_idx(r)])
             total_nodes = sum(1 for r in range(n_r) for s in range(n_s) if xs[self._node_idx(r, s)])
             total_l1 = sum(1 for r in range(n_r) for s in range(n_s) if xs[self._l1_idx(r, s)])
             total_l2 = sum(1 for r in range(n_r) for s in range(n_s) if xs[self._l2_idx(r, s)])
+            
+            links_to_l2 = self.model.fat_tree.get_links_per_l1_to_l2(total_l2)
             
             c_racks = total_racks * costs.rack
             c_nodes = total_nodes * costs.blade_node

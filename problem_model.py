@@ -76,8 +76,23 @@ class FatTreeConfig:
     ports_to_nodes: int = 32        # downlinks per L1 switch (k/2)
     ports_to_spine: int = 32        # uplinks per L1 switch (k/2)
     links_per_node: int = 16        # network links per compute node
-    links_per_l1_to_l2: int = 4     # cables from each L1 to each L2
     max_cables_per_canal: int = 10  # cable thickness constraint
+
+    def get_links_per_l1_to_l2(self, total_l2_switches: int) -> int:
+        """
+        Calculate required cables from each L1 to each L2 to maintain
+        a strictly non-blocking (1:1 oversubscription) architecture.
+
+        In a non-blocking fat-tree, all 32 uplinks from an L1 MUST be
+        connected to the available L2 Spine switches.
+        """
+        if total_l2_switches == 0:
+            return 0
+        
+        # 32 uplinks / number of Spines. 
+        # If there are 8 L2s, it's 4 cables each. 
+        # If there are 32 L2s, it's 1 cable each.
+        return max(1, self.ports_to_spine // total_l2_switches)
 
 
 class DataCenterModel:

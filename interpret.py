@@ -87,7 +87,9 @@ class SolutionInterpreter:
         """
         costs = self.model.costs
         links_per_node = self.model.fat_tree.links_per_node  # 16
-        links_per_l1_to_l2 = self.model.fat_tree.links_per_l1_to_l2  # 4
+        
+        total_l2 = decoded["total_l2"]
+        links_per_l1_to_l2 = self.model.fat_tree.get_links_per_l1_to_l2(total_l2)
 
         rack_cost = decoded["total_racks"] * costs.rack
         node_cost = decoded["total_nodes"] * costs.blade_node
@@ -106,11 +108,11 @@ class SolutionInterpreter:
             if min_cable < float("inf"):
                 cable_cost += links_per_node * min_cable  # 16 cables per node
 
-        # L1-to-L2 cables: links_per_l1_to_l2 cables per L1-L2 pair
+        # L1-to-L2 cables
         for l1_r, l1_s in decoded["l1_switches"]:
             for l2_r, l2_s in decoded["l2_switches"]:
                 c = self.model.cable_cost_between_slots(l1_r, l1_s, l2_r, l2_s)
-                cable_cost += links_per_l1_to_l2 * c  # 4 cables per L1-L2 pair
+                cable_cost += links_per_l1_to_l2 * c
 
         total = rack_cost + node_cost + switch_cost + cable_cost
 
