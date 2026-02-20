@@ -321,42 +321,42 @@ python3 main.py --reward-node 10 --penalty-budget 3 --switch-incentive 0.5
 ============================================================
 
 📐 Building data center model...
-   DataCenterModel(room=3x3, racks=9, slots_per_rack=10, total_vars=279)
+   DataCenterModel(room=4x4, racks=16, slots_per_rack=10, total_vars=496)
    Estimated max nodes (upper bound): 115
 
 🔧 Constructing QUBO problem...
 QUBO Problem Description:
-  Total binary variables: 289
-    - Rack purchase vars: 9
-    - Node placement vars: 90
-    - L1 switch vars: 90
-    - L2 switch vars: 90
+  Total binary variables: 506
+    - Rack purchase vars: 16
+    - Node placement vars: 160
+    - L1 switch vars: 160
+    - L2 switch vars: 160
   Budget: 10,000,000€
-  Penalty weights: A1=10.0, A3=2.0, B=5.0, switch_factor=0.3
-  Q-matrix shape: (289, 289)
+  Penalty weights: A1=10.0, A3=5.0, B=25.0, switch_factor=0.8
+  Q-matrix shape: (506, 506)
 
 Solving with SA...
-Solver completed. Raw ones: 96, Post-processed ones: 91
+Solver completed. Raw ones: 160, Post-processed ones: 150
 
 ============================================================
   DATA CENTER FAT-TREE OPTIMIZATION RESULT
 ============================================================
 
 📊 Configuration Summary:
-  Racks purchased:  9
-  Compute nodes:    41
-  L1 switches:      25
+  Racks purchased:  16
+  Compute nodes:    62
+  L1 switches:      43
   L2 switches:      25
 
 💰 Cost Breakdown:
-  Racks:        1,170,000€
-  Nodes:        3,280,000€
-  Switches:     1,000,000€
-  Cables:       4,510,800€
+  Racks:        2,080,000€
+  Nodes:        4,960,000€
+  Switches:     1,360,000€
+  Cables:       1,532,250€
   ──────────────────────────────
-  Total:        9,960,800€
+  Total:        9,932,250€
   Budget:      10,000,000€
-  Remaining:       39,200€
+  Remaining:       67,750€
 
 ✅ Constraint Validation:
   budget........................ ✅ PASS
@@ -366,7 +366,7 @@ Solver completed. Raw ones: 96, Post-processed ones: 91
   port_capacity................. ✅ PASS
 
 ============================================================
-  ✅ VALID SOLUTION: 41 nodes deployed
+  ✅ VALID SOLUTION: 62 nodes deployed
 ============================================================
 ```
 

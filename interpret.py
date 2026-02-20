@@ -184,12 +184,27 @@ class SolutionInterpreter:
         
         port_ok = (links_required <= downlinks_available) and (decoded["total_l1"] <= spine_capacity)
 
+        # Canal Capacity (10 cable thickness limit per rack)
+        # Net cables out = max(0, 16 * N_r - 32 * L1_r) <= 10
+        canal_ok = True
+        max_canal = self.model.fat_tree.max_cables_per_canal
+        
+        for r in range(n_r):
+            nodes_r = sum(1 for nr, ns in decoded["nodes"] if nr == r)
+            l1s_r = sum(1 for lr, ls in decoded["l1_switches"] if lr == r)
+            
+            cables_out = (nodes_r * self.model.fat_tree.links_per_node) - (l1s_r * self.model.fat_tree.ports_to_nodes)
+            if cables_out > max_canal:
+                canal_ok = False
+                break
+
         return {
             "budget": budget_ok,
             "slot_exclusivity": slot_ok,
             "rack_activation": rack_ok,
             "topology_minimum": topo_ok,
             "port_capacity": port_ok,
+            "canal_capacity": canal_ok,
         }
 
     def display(self, solution: np.ndarray, budget: float):

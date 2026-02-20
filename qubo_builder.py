@@ -378,6 +378,34 @@ class QUBOBuilder:
             return xs
         
         x = enforce_port_capacity(x)
+        
+        # Step 2.6: Enforce physical canal thickness limit (Max 10 cables leaving a rack)
+        # For each rack: Net cables leaving = max(0, 16 * nodes - 32 * L1)
+        # Constraint: 16 * nodes - 32 * L1 <= 10
+        max_canal_cables = self.model.fat_tree.max_cables_per_canal
+        
+        def enforce_canal_thickness(xs):
+            while True:
+                removed_n = False
+                for r in range(n_r):
+                    nodes_in_rack = sum(1 for s in range(n_s) if xs[self._node_idx(r, s)])
+                    l1_in_rack = sum(1 for s in range(n_s) if xs[self._l1_idx(r, s)])
+                    
+                    cables_out = (nodes_in_rack * links_per_node) - (l1_in_rack * ports_to_nodes)
+                    if cables_out > max_canal_cables:
+                        # Find a node to remove in this specific rack
+                        for s in range(n_s - 1, -1, -1):
+                            if xs[self._node_idx(r, s)]:
+                                xs[self._node_idx(r, s)] = 0
+                                removed_n = True
+                                break
+                    if removed_n:
+                        break # restart loop
+                if not removed_n:
+                    break
+            return xs
+            
+        x = enforce_canal_thickness(x)
 
         # Step 3: Auto-purchase racks for any placed components
         for r in range(n_r):
