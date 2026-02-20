@@ -146,37 +146,37 @@ class QUBOBuilder:
         # (A_port / 2) for the second term to soften the L2 penalty landscape
         A_l2 = self.A_port * 0.5 
 
-        for r1, s1 in nodes:
+        for i, (r1, s1) in enumerate(nodes):
             idx_n1 = self._node_idx(r1, s1)
             self._add_diagonal(idx_n1, self.A_port)
-            for r2, s2 in nodes:
-                if (r1, s1) != (r2, s2):
-                    self._add_interaction(idx_n1, self._node_idx(r2, s2), 2 * self.A_port)
+            for j in range(i + 1, len(nodes)):
+                r2, s2 = nodes[j]
+                self._add_interaction(idx_n1, self._node_idx(r2, s2), 2 * self.A_port)
                     
-        for r1, s1 in l1s:
+        for i, (r1, s1) in enumerate(l1s):
             idx_l1 = self._l1_idx(r1, s1)
             # 4 * L1**2 from the Node balance, plus 1 * L1**2 from the L2 balance
             self._add_diagonal(idx_l1, 4 * self.A_port + A_l2) 
-            for r2, s2 in l1s:
-                if (r1, s1) != (r2, s2):
-                    self._add_interaction(idx_l1, self._l1_idx(r2, s2), 8 * self.A_port + 2 * A_l2)
+            for j in range(i + 1, len(l1s)):
+                r2, s2 = l1s[j]
+                self._add_interaction(idx_l1, self._l1_idx(r2, s2), 8 * self.A_port + 2 * A_l2)
                     
-        for r, s in l2s:
+        for i, (r, s) in enumerate(l2s):
             idx_l2 = self._l2_idx(r, s)
-            self._add_diagonal(idx_l2, A_l2)
-            for r2, s2 in l2s:
-                if (r, s) != (r2, s2):
-                    self._add_interaction(idx_l2, self._l2_idx(r2, s2), 2 * A_l2)
+            self._add_diagonal(idx_l2, 4 * A_l2)
+            for j in range(i + 1, len(l2s)):
+                r2, s2 = l2s[j]
+                self._add_interaction(idx_l2, self._l2_idx(r2, s2), 8 * A_l2)
                     
         # Cross items: -4 * N * L1 (from first term)
         for rn, sn in nodes:
             for rl, sl in l1s:
                 self._add_interaction(self._node_idx(rn, sn), self._l1_idx(rl, sl), -4 * self.A_port)
                 
-        # Cross items: -2 * L1 * L2 (from second term)
+        # Cross items: -4 * L1 * L2 (from second term, enforcing (L1 - 2*L2)^2)
         for rl, sl in l1s:
             for r2, s2 in l2s:
-                self._add_interaction(self._l1_idx(rl, sl), self._l2_idx(r2, s2), -2 * A_l2)
+                self._add_interaction(self._l1_idx(rl, sl), self._l2_idx(r2, s2), -4 * A_l2)
 
     def _build_locality(self):
         """
@@ -207,16 +207,16 @@ class QUBOBuilder:
         
         c = np.zeros(self.num_vars)
         
-        # Populate component costs
+        # Populate component costs (Rounded to integer to match integer slacks)
         for r in range(n_r):
-            c[self._rack_idx(r)] = costs.rack / self.scale_factor
+            c[self._rack_idx(r)] = round(costs.rack / self.scale_factor)
             for s in range(n_s):
                 node_cost = costs.blade_node + links_per_node * avg_cable
                 switch_cost = costs.switch_64port + avg_cable
                 
-                c[self._node_idx(r, s)] = node_cost / self.scale_factor
-                c[self._l1_idx(r, s)] = switch_cost / self.scale_factor
-                c[self._l2_idx(r, s)] = switch_cost / self.scale_factor
+                c[self._node_idx(r, s)] = round(node_cost / self.scale_factor)
+                c[self._l1_idx(r, s)] = round(switch_cost / self.scale_factor)
+                c[self._l2_idx(r, s)] = round(switch_cost / self.scale_factor)
                 
         # Populate slack variable weights
         for k in range(self.num_slacks):
@@ -346,20 +346,35 @@ class QUBOBuilder:
             while True:
                 total_n = sum(1 for r in range(n_r) for s in range(n_s) if xs[self._node_idx(r, s)])
                 total_l1 = sum(1 for r in range(n_r) for s in range(n_s) if xs[self._l1_idx(r, s)])
-                if total_n * links_per_node <= total_l1 * ports_to_nodes:
-                    break
-                # Remove a node greedily
-                removed = False
-                for r in range(n_r - 1, -1, -1):
-                    for s in range(n_s - 1, -1, -1):
-                        if xs[self._node_idx(r, s)]:
-                            xs[self._node_idx(r, s)] = 0
-                            removed = True
-                            break
-                    if removed:
-                        break
-                if not removed:
-                    break
+                total_l2 = sum(1 for r in range(n_r) for s in range(n_s) if xs[self._l2_idx(r, s)])
+                
+                # Check Spine (L2) to Leaf (L1) capacity
+                # L1 needs 32 uplinks. L2 provides 64 downlinks.
+                # So L1 <= 2 * L2
+                if total_l1 > 2 * max(1, total_l2): # Prevent 0 division math logic scaling
+                    removed_l1 = False
+                    for r in range(n_r - 1, -1, -1):
+                        for s in range(n_s - 1, -1, -1):
+                            if xs[self._l1_idx(r, s)]:
+                                xs[self._l1_idx(r, s)] = 0
+                                removed_l1 = True
+                                break
+                        if removed_l1: break
+                    if removed_l1: continue
+                
+                # Check Leaf (L1) to Node capacity
+                if total_n * links_per_node > total_l1 * ports_to_nodes:
+                    removed_n = False
+                    for r in range(n_r - 1, -1, -1):
+                        for s in range(n_s - 1, -1, -1):
+                            if xs[self._node_idx(r, s)]:
+                                xs[self._node_idx(r, s)] = 0
+                                removed_n = True
+                                break
+                        if removed_n: break
+                    if removed_n: continue
+                    
+                break
             return xs
         
         x = enforce_port_capacity(x)

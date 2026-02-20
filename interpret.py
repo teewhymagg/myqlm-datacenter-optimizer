@@ -174,10 +174,15 @@ class SolutionInterpreter:
         # Topology: at least one L1 and one L2 for fat-tree
         topo_ok = decoded["total_l1"] >= 1 and decoded["total_l2"] >= 1
 
-        # Port capacity: nodes * links_per_node <= L1_switches * ports_to_nodes
+        # Port capacity: 
+        # 1. nodes * links_per_node <= L1_switches * ports_to_nodes
+        # 2. L1_switches <= 2 * L2_switches (Non-blocking Spine/Leaf scale)
         links_required = decoded["total_nodes"] * self.model.fat_tree.links_per_node
         downlinks_available = decoded["total_l1"] * self.model.fat_tree.ports_to_nodes
-        port_ok = links_required <= downlinks_available
+        
+        spine_capacity = max(1, decoded["total_l2"]) * 2
+        
+        port_ok = (links_required <= downlinks_available) and (decoded["total_l1"] <= spine_capacity)
 
         return {
             "budget": budget_ok,
